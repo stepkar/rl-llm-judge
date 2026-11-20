@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.DS_Store
+.idea/
+
+# Адаптеры тяжёлые (126 МБ на прогон) и не коммитятся. Метрики, предсказания и конфиги
+# основной серии коммитятся (~11 МБ): по ним report пересобирает docs/ без переобучения.
+runs/*/adapters/
+runs/smoke/
+runs/*check4b*

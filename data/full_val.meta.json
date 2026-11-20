@@ -1,0 +1,21 @@
+{
+  "artifact": "20261119_164517_cand_ft",
+  "split": "val",
+  "top_k": 10,
+  "experiment": "cand_ft",
+  "data_sample": null,
+  "split_seed": 42,
+  "created": "2026-11-19 16:55:26",
+  "summary": {
+    "n": 12825,
+    "top1": 0.7417,
+    "top3": 0.8749,
+    "top10": 0.9393,
+    "oracle": 0.972,
+    "slices": {
+      "org_5plus": 7875,
+      "org_1_4": 3135,
+      "only_reference": 1815
+    }
+  }
+}

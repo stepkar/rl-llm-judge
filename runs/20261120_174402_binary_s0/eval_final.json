@@ -1,0 +1,100 @@
+{
+  "n": 2000,
+  "n_solvable": 1808,
+  "accuracy": 0.7096,
+  "catboost_top1": 0.8219,
+  "same_branch": 0.8324,
+  "abstain_rate": 0.006,
+  "coverage": 0.994,
+  "precision_answered": 0.6454,
+  "abstain_when_unsolvable": 0.0052,
+  "agree_with_catboost": 0.671,
+  "entropy": 0.047,
+  "option_mass": 1.0,
+  "slices": {
+    "only_reference": {
+      "n": 203,
+      "accuracy": 0.7734,
+      "catboost": 0.7291
+    },
+    "org_1_4": {
+      "n": 424,
+      "accuracy": 0.7759,
+      "catboost": 0.7311
+    },
+    "org_5plus": {
+      "n": 1181,
+      "accuracy": 0.6749,
+      "catboost": 0.8704
+    }
+  },
+  "by_gold_position": {
+    "1": {
+      "n": 353,
+      "accuracy": 0.6431,
+      "catboost": 0.8159
+    },
+    "2": {
+      "n": 370,
+      "accuracy": 0.7676,
+      "catboost": 0.8189
+    },
+    "3": {
+      "n": 322,
+      "accuracy": 0.7298,
+      "catboost": 0.8758
+    },
+    "4": {
+      "n": 382,
+      "accuracy": 0.7016,
+      "catboost": 0.7827
+    },
+    "5": {
+      "n": 381,
+      "accuracy": 0.706,
+      "catboost": 0.8241
+    }
+  },
+  "answer_share": {
+    "0": 0.006,
+    "1": 0.1895,
+    "2": 0.249,
+    "3": 0.1735,
+    "4": 0.1975,
+    "5": 0.1845
+  },
+  "by_catboost_rank": {
+    "0": {
+      "n": 1486,
+      "accuracy": 0.7645,
+      "catboost": 1.0
+    },
+    "1": {
+      "n": 205,
+      "accuracy": 0.5122,
+      "catboost": 0.0
+    },
+    "2": {
+      "n": 66,
+      "accuracy": 0.3636,
+      "catboost": 0.0
+    },
+    "3": {
+      "n": 35,
+      "accuracy": 0.3714,
+      "catboost": 0.0
+    },
+    "4": {
+      "n": 16,
+      "accuracy": 0.3125,
+      "catboost": 0.0
+    }
+  },
+  "errors": {
+    "n": 525,
+    "same_branch": 0.4229,
+    "abstain": 0.021,
+    "other_branch": 0.5562
+  },
+  "kl": 0.4515
+}

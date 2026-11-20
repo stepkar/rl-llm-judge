@@ -1,0 +1,37 @@
+# Все настройки прогона. Любую можно переопределить: --set раздел.ключ=значение
+# Отложенная выборка и порядок кандидатов зафиксированы data.split_seed — между
+# прогонами одного исследования его не трогаем.
+
+experiment: debug
+out_dir: runs
+
+data:
+  path: data/full_val.jsonl      # выгрузка из ml_classification (scripts/export_judge_dataset.py); для отладки data/proxy_val.jsonl
+  k: 5                           # кандидатов в промпте; ответ — цифра 0..k
+  eval_size: 2000                # отложенная выборка: только до и после обучения, по ней все выводы
+  dev_size: 500                  # оценки по ходу обучения, кривые, подбор lr / kl_coef
+  split_seed: 42
+
+model:
+  name: Qwen/Qwen3-4B-Instruct-2507   # для отладки: Qwen/Qwen3-0.6B
+  lora_rank: 16
+  lora_scale: 20.0
+  lora_layers: -1                # -1 = LoRA во всех блоках
+  batch_size: 16                 # батч инференса; на результат не влияет
+  cache_limit_gb: 8.0            # лимит кэша буферов MLX; без него процесс растёт до 100+ ГБ
+
+reward:
+  name: binary                   # binary | hierarchical | abstain
+  partial_credit: 0.5            # hierarchical: кредит за соседний лист той же ветки
+  wrong_penalty: 1.0             # abstain: штраф λ за неверный ответ
+
+train:
+  method: grpo                   # grpo | sft (контроль: обучение с учителем на тех же данных)
+  steps: 250
+  batch_size: 8                  # промптов на шаг
+  group_size: 8                  # G — ответов на промпт
+  learning_rate: 3.0e-7          # подобрано на 0.6B; для 4B проверить проверочным прогоном (README)
+  kl_coef: 0.05
+  temperature: 1.0
+  eval_every: 50                 # оценка на dev
+  seed: 0
