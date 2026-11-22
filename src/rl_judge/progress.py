@@ -31,7 +31,7 @@ class Eta:
         return time.perf_counter() - self._start
 
     def line(self, done: int) -> str:
-        """40/250 (16%), прошло 3 мин 10 с, осталось ≈ 16 мин 40 с, конец ≈ 18:42"""
+        """пример:40/250 (16%), прошло 3 мин 10 с, осталось ≈ 16 мин 40 с, конец ≈ 18:42"""
         text = f"{done}/{self.total} ({done / self.total:.0%}), прошло {fmt_duration(self.elapsed)}"
         if done > 0:
             remaining = self.elapsed * (self.total - done) / done

@@ -1,9 +1,5 @@
-"""Графики в docs/figures и таблицы для README (печатаются в консоль).
-
+"""Графики/таблицы для README (печатаются в консоль).
     uv run python -m rl_judge.report runs/*_s?
-
-Seed одного условия усредняются: на графике линия - среднее, полоса - min..max,
-в таблицах среднее ± std.
 """
 
 from __future__ import annotations

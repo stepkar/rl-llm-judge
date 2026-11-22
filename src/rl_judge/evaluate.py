@@ -1,8 +1,7 @@
 """Оценка жадным ответом. Accuracy считается на решаемых задачах (верный код
 среди k показанных), "не знаю" и точность ответов - на всех.
 
-Можно запустить отдельно от обучения:
-
+Без обучения:
     uv run python -m rl_judge.evaluate --set model.name=Qwen/Qwen3-0.6B
     uv run python -m rl_judge.evaluate --adapters runs/<прогон>/adapters --split eval
 """

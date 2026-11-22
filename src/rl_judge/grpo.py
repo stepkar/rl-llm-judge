@@ -50,7 +50,7 @@ def grpo_loss(
 
 
 def sft_loss(logp: mx.array, ref_logp: mx.array, targets: mx.array) -> tuple[mx.array, mx.array]:
-    """Кросс-энтропия на правильную цифру. KL в loss не входит, он только для лога."""
+    """Кросс-энтропия на правильную цифру. KL в loss не входит, чисто для лога."""
     nll = -mx.take_along_axis(logp, targets[:, None], axis=1).mean()
     return nll, kl_to_reference(logp, ref_logp).mean()
 
