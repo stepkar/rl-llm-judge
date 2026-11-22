@@ -1,11 +1,9 @@
-"""Графики и таблицы для README по готовым прогонам.
+"""Графики в docs/figures и таблицы для README (печатаются в консоль).
 
-    uv run python -m rl_judge.report runs/*        # → docs/figures/*.png, docs/results.md
+    uv run python -m rl_judge.report runs/*_s?
 
-Прогоны группируются по условию (метод + награда), seed внутри условия
-усредняются: на графиках линия — среднее, полоса — min..max по seed, в таблице
-«среднее ± стандартное отклонение». Если seed один, полосы нет, и выводы из
-маленькой разницы делать не стоит — об этом же пишет и задание.
+Seed одного условия усредняются: на графике линия - среднее, полоса - min..max,
+в таблицах среднее ± std.
 """
 
 from __future__ import annotations
@@ -28,13 +26,12 @@ from rl_judge.config import Config
 from rl_judge.data import load_examples, split_examples
 from rl_judge.prompt import ABSTAIN, Prompt, build_prompts
 
-# Метрики итоговой таблицы (ключ в eval_final.json → подпись).
 TABLE_METRICS = {
     "accuracy": "accuracy",
     "same_branch": "та же ветка",
-    "abstain_rate": "«не знаю»",
+    "abstain_rate": '"не знаю"',
     "precision_answered": "точность ответов",
-    "abstain_when_unsolvable": "«не знаю» без верного",
+    "abstain_when_unsolvable": '"не знаю" без верного',
     "agree_with_catboost": "согласие с CatBoost",
     "entropy": "энтропия",
     "kl": "KL к исходной",
@@ -44,7 +41,7 @@ SLICES = {
     "org_1_4": "1–4 примера",
     "org_5plus": "5+ примеров",
 }
-ERRORS = {"same_branch": "сосед по ветке", "other_branch": "другая ветка", "abstain": "«не знаю»"}
+ERRORS = {"same_branch": "сосед по ветке", "other_branch": "другая ветка", "abstain": '"не знаю"'}
 
 
 @dataclass
@@ -53,8 +50,8 @@ class Run:
     cfg: Config
     train: list[dict[str, Any]]
     evals: list[dict[str, Any]]  # dev по шагам
-    base: dict[str, Any]  # отложенная выборка до обучения
-    final: dict[str, Any]  # и после
+    base: dict[str, Any]  # отложенная до обучения
+    final: dict[str, Any]  # отложенная после
 
     @property
     def condition(self) -> str:
@@ -98,7 +95,6 @@ def _plot_band(ax: Any, steps: list[int], series: list[np.ndarray], label: str) 
 
 
 def plot_curves(groups: dict[str, list[Run]], out: Path, smooth: int = 10) -> list[Path]:
-    """Кривые обучения: награда и KL на батчах, точность, «не знаю» и энтропия на dev."""
     figures = []
     specs = [
         (
@@ -107,17 +103,17 @@ def plot_curves(groups: dict[str, list[Run]], out: Path, smooth: int = 10) -> li
             "Награда жадного ответа на батче (скользящее среднее, 10 шагов)",
             "награда",
         ),
-        ("train", "kl", "KL(π ‖ π_исх) на батче (скользящее среднее, 10 шагов)", "KL, наты"),
-        ("eval", "kl", "KL(π ‖ π_исх) на dev", "KL, наты"),
-        ("eval", "accuracy", "Accuracy на dev (решаемые задачи)", "доля верных"),
-        ("eval", "abstain_rate", "Доля ответов «не знаю» на dev", "доля"),
-        ("eval", "entropy", "Энтропия политики на dev", "энтропия, наты"),
+        ("train", "kl", "KL(π || π_исх) на батче (скользящее среднее, 10 шагов)", "KL, наты"),
+        ("eval", "kl", "KL(π || π_исх) на dev", "KL, наты"),
+        ("eval", "accuracy", "accuracy на dev (решаемые задачи)", "доля верных"),
+        ("eval", "abstain_rate", 'доля ответов "не знаю" на dev', "доля"),
+        ("eval", "entropy", "энтропия политики на dev", "энтропия, наты"),
     ]
     for kind, key, title, ylabel in specs:
         fig, ax = plt.subplots(figsize=(8, 4.5))
         for name, runs in sorted(groups.items()):
             rows = [r.train if kind == "train" else r.evals for r in runs]
-            steps = [row["step"] for row in min(rows, key=len)]  # общая часть, если длины разные
+            steps = [row["step"] for row in min(rows, key=len)]
             raw = [[row[key] for row in rs] for rs in rows]
             series = [_smooth(v, smooth) if kind == "train" else np.asarray(v) for v in raw]
             _plot_band(ax, steps, series, name)
@@ -131,7 +127,7 @@ def plot_curves(groups: dict[str, list[Run]], out: Path, smooth: int = 10) -> li
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.3)
         ax.legend()
-        path = out / f"{kind}_{key}.png"  # train_kl и eval_kl не перезаписывают друг друга
+        path = out / f"{kind}_{key}.png"
         fig.tight_layout()
         fig.savefig(path, dpi=120)
         plt.close(fig)
@@ -146,7 +142,6 @@ def _mean_std(values: list[float]) -> str:
 
 
 def results_table(groups: dict[str, list[Run]]) -> str:
-    """Итог по условиям: базовая модель (шаг 0) и каждое обученное условие."""
     first = next(iter(groups.values()))[0]
     base = first.base
     header = "| условие | seed | " + " | ".join(TABLE_METRICS.values()) + " |"
@@ -166,8 +161,7 @@ def results_table(groups: dict[str, list[Run]]) -> str:
 
 
 def breakdown_table(groups: dict[str, list[Run]], key: str, columns: dict[str, str]) -> str:
-    """Accuracy по группам задач (срез, место верного ответа, место у CatBoost):
-    строка CatBoost, базовая модель и каждое условие."""
+    """Accuracy по группам задач: срез, место в промпте и т.п."""
     first = next(iter(groups.values()))[0]
     lines = [
         "| условие | " + " | ".join(columns.values()) + " |",
@@ -187,12 +181,11 @@ def breakdown_table(groups: dict[str, list[Run]], key: str, columns: dict[str, s
 
 
 def answer_share_table(groups: dict[str, list[Run]]) -> str:
-    """Как часто модель называет каждую цифру. Верный ответ равномерно стоит на местах
-    1..k, так что перекос в одну цифру — выбор по позиции, а не по тексту."""
+    """Как часто модель называет каждую цифру."""
     first = next(iter(groups.values()))[0]
     options = list(first.base["answer_share"])
     lines = [
-        "| условие | " + " | ".join(f"«{o}»" for o in options) + " |",
+        "| условие | " + " | ".join(f'"{o}"' for o in options) + " |",
         "|" + "---|" * (len(options) + 1),
         "| базовая модель | "
         + " | ".join(f"{first.base['answer_share'][o]:.3f}" for o in options)
@@ -205,7 +198,7 @@ def answer_share_table(groups: dict[str, list[Run]]) -> str:
 
 
 def errors_table(groups: dict[str, list[Run]]) -> str:
-    """Из чего состоят ошибки на решаемых задачах (доли от числа ошибок)."""
+    """Ошибки на решаемых задачах, доли от их числа."""
     first = next(iter(groups.values()))[0]
     lines = [
         "| условие | ошибок | " + " | ".join(ERRORS.values()) + " |",
@@ -246,33 +239,8 @@ def _gold_name(prompt: Prompt) -> str:
     return next(c.name for c in prompt.example.candidates if c.code == prompt.example.gold)
 
 
-def error_examples(groups: dict[str, list[Run]], n: int) -> str:
-    """Ошибки каждого условия (первый seed) на решаемых задачах: что выбрала модель
-    вместо верного и в той ли это ветке справочника."""
-    first = next(iter(groups.values()))[0]
-    prompts = _holdout_prompts(first)
-    lines = [
-        "| условие | позиция | верный класс | ответ модели | ветка |",
-        "|---|---|---|---|---|",
-    ]
-    for name, runs in sorted(groups.items()):
-        path = runs[0].path / "eval_final.predictions.jsonl"
-        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-        wrong = sorted(
-            (r for r in rows if r["solvable"] and not r["correct"]), key=lambda r: r["id"]
-        )
-        for r in wrong[:n]:
-            p = prompts[r["id"]]
-            branch = "—" if r["action"] == ABSTAIN else ("та же" if r["same_branch"] else "другая")
-            lines.append(
-                f"| {name} | {p.example.query[:50]} | {_gold_name(p)[:50]} | "
-                f"{_answer(p, r['action'])} | {branch} |"
-            )
-    return "\n".join(lines)
-
-
 def answers_table(groups: dict[str, list[Run]], n: int) -> str:
-    """Ответы базовой и обученных моделей (первый seed каждого условия) на одних задачах."""
+    """Ответы базовой и обученных моделей (seed 0) на одних задачах."""
     first = next(iter(groups.values()))[0]
     d = first.cfg.data
     prompts = _holdout_prompts(first)
@@ -286,7 +254,7 @@ def answers_table(groups: dict[str, list[Run]], n: int) -> str:
         "| позиция | верный класс | базовая | " + " | ".join(names) + " |",
         "|" + "---|" * (len(names) + 3),
     ]
-    # Сначала задачи, где ответы разошлись: на них видно, что поменяло обучение.
+    # сначала задачи, где ответы разошлись
     ids = [i for i in base if prompts[i].example.solvable(d.k)]
     ids.sort(key=lambda i: len({base[i], *(trained[m][i] for m in names)}) == 1)
     for i in ids[:n]:
@@ -303,13 +271,12 @@ def main() -> None:
     )
     parser.add_argument("runs", nargs="+", type=Path, help="каталоги прогонов из runs/")
     parser.add_argument("--out", type=Path, default=Path("docs"))
-    parser.add_argument("--answers", type=int, default=15, help="строк в таблице ответов")
-    parser.add_argument("--errors", type=int, default=5, help="примеров ошибок на условие")
+    parser.add_argument("--answers", type=int, default=12, help="строк в таблице ответов")
     args = parser.parse_args()
 
     groups: dict[str, list[Run]] = defaultdict(list)
     for path in args.runs:
-        if (path / "eval_final.json").exists():  # недоделанные прогоны пропускаем
+        if (path / "eval_final.json").exists():
             run = load_run(path)
             groups[run.condition].append(run)
     if not groups:
@@ -318,62 +285,19 @@ def main() -> None:
     figures_dir = args.out / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
     figures = plot_curves(groups, figures_dir)
-    first = next(iter(groups.values()))[0]
-    positions = {str(a): f"на месте {a}" for a in range(1, first.cfg.data.k + 1)}
-    ranks = {str(r): f"у CatBoost {r + 1}-й" for r in range(first.cfg.data.k)}
-    text = [
-        "# Результаты",
-        "",
-        "Все цифры — отложенная выборка, жадный ответ, последний шаг обучения. Accuracy и",
-        "доли по ветке считаются на решаемых задачах (верный код есть среди показанных),",
-        "«не знаю» и точность ответов — на всех. Для обученных условий «среднее ± стандартное",
-        "отклонение по seed» (ddof=1), в столбце seed — число запусков. Базовая модель и",
-        "CatBoost от seed не зависят. На графиках линия — среднее по seed, полоса — min..max.",
-        "",
-        "## Итоговое сравнение",
-        "",
-        results_table(groups),
-        "",
-        "## По срезам: сколько примеров у верного класса в train каскада",
-        "",
-        breakdown_table(groups, "slices", SLICES),
-        "",
-        "## По месту верного кода у CatBoost",
-        "",
-        "Первый столбец — задачи, где CatBoost и так прав; остальные — где судья может его поправить.",
-        "",
-        breakdown_table(groups, "by_catboost_rank", ranks),
-        "",
-        "## По месту верного ответа в промпте",
-        "",
-        "Кандидаты перемешаны, верный ответ стоит на каждом месте примерно одинаково часто.",
-        "Если accuracy сильно зависит от места, модель выбирает по позиции, а не по тексту.",
-        "",
-        breakdown_table(groups, "by_gold_position", positions),
-        "",
-        "Как часто модель называет каждую цифру (все задачи, «0» — «не знаю»):",
-        "",
-        answer_share_table(groups),
-        "",
-        "## Из чего состоят ошибки",
-        "",
-        errors_table(groups),
-        "",
-        error_examples(groups, args.errors),
-        "",
-        "## Ответы моделей на одних и тех же задачах",
-        "",
-        answers_table(groups, args.answers),
-        "",
-        "## Графики",
-        "",
-        "Длина ответа у всех условий постоянна — одна цифра (`completion_tokens: 1` в",
-        "metrics.jsonl), поэтому вместо неё показаны энтропия и доля «не знаю».",
-        "",
-        *[f"![{f.stem}](figures/{f.name})" for f in figures],
-    ]
-    (args.out / "results.md").write_text("\n".join(text) + "\n", encoding="utf-8")
-    print(f"готово: {args.out / 'results.md'}, графиков: {len(figures)}")
+    k = next(iter(groups.values()))[0].cfg.data.k
+    positions = {str(a): f"на месте {a}" for a in range(1, k + 1)}
+    tables = {
+        "Итоговое сравнение": results_table(groups),
+        "По срезам": breakdown_table(groups, "slices", SLICES),
+        "По месту верного ответа в промпте": breakdown_table(groups, "by_gold_position", positions),
+        "Какую цифру называет модель": answer_share_table(groups),
+        "Из чего состоят ошибки": errors_table(groups),
+        "Ответы моделей": answers_table(groups, args.answers),
+    }
+    for title, table in tables.items():
+        print(f"\n### {title}\n\n{table}")
+    print(f"\nграфиков: {len(figures)}, в {figures_dir}")
 
 
 if __name__ == "__main__":

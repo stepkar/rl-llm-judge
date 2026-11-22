@@ -1,12 +1,8 @@
-"""Текст промпта и связь «цифра ответа ↔ код кандидата».
+"""Промпт и перевод цифры ответа в код кандидата.
 
-Кандидаты показываются в перемешанном порядке. Если оставить порядок CatBoost,
-модель быстро выучит «всегда отвечай 1» (это уже 68% верных) и мы будем мерить
-не понимание текста, а умение копировать ранжировщик. Перестановка у каждой
-задачи своя, но фиксированная (зависит от seed и id), поэтому базовая и все
-обученные модели видят один и тот же промпт.
-
-Ответ — одна цифра: 1..k — номер варианта, 0 — «подходящего нет».
+Кандидаты перемешаны: в порядке CatBoost модель выучила бы "всегда отвечай 1",
+это уже 68% верных. Перестановка зависит от seed и id, так что все модели видят
+один и тот же промпт. Ответ: 1..k номер варианта, 0 - подходящего нет.
 """
 
 from __future__ import annotations
@@ -24,21 +20,20 @@ ABSTAIN = 0
 @dataclass(frozen=True, slots=True)
 class Prompt:
     example: Example
-    order: tuple[int, ...]  # order[j] — индекс кандидата (в порядке CatBoost) на месте j+1
-    text: str  # сообщение пользователя; chat-шаблон модели накладывается в model.py
+    order: tuple[int, ...]  # order[j] - индекс кандидата у CatBoost на месте j+1
+    text: str  # без chat-шаблона, он добавляется в model.py
 
     @property
     def n_options(self) -> int:
-        return len(self.order) + 1  # плюс «0 — нет подходящего»
+        return len(self.order) + 1
 
     def code_of(self, action: int) -> str | None:
-        """Код, который выбрала модель; None — воздержалась."""
         if action == ABSTAIN:
             return None
         return self.example.candidates[self.order[action - 1]].code
 
     def gold_action(self) -> int:
-        """Правильная цифра: место верного кода в списке или 0, если его там нет."""
+        """Правильная цифра, 0 если верного кода в списке нет."""
         for j, idx in enumerate(self.order):
             if self.example.candidates[idx].code == self.example.gold:
                 return j + 1
@@ -46,8 +41,6 @@ class Prompt:
 
 
 def shuffled_order(example: Example, k: int, seed: int) -> tuple[int, ...]:
-    # Пул каскада — 60–80 кодов, так что короче k он не бывает; если всё же да,
-    # лучше упасть сразу, чем тихо показывать модели разное число вариантов.
     if len(example.candidates) < k:
         raise ValueError(
             f"у задачи {example.id} всего {len(example.candidates)} кандидатов, нужно {k}"

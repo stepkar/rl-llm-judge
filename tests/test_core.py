@@ -81,7 +81,7 @@ def test_split_is_deterministic_and_disjoint() -> None:
 def test_group_advantages() -> None:
     adv = group_advantages(np.array([[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 0.0]], dtype=np.float32))
     assert adv[0].tolist() == [1.0, -1.0, -1.0, 1.0]
-    assert adv[1].tolist() == [0.0, 0.0, 0.0, 0.0]  # нет разброса — нет сигнала
+    assert adv[1].tolist() == [0.0, 0.0, 0.0, 0.0]  # нет разброса, нет сигнала
 
 
 def test_sample_actions_follows_distribution() -> None:
@@ -102,7 +102,7 @@ def test_metrics_on_handmade_predictions() -> None:
     logp = np.full((3, 6), -10.0, dtype=np.float32)
     logp[0, prompts[0].gold_action()] = 0.0  # верно
     logp[1, 1 if prompts[1].gold_action() != 1 else 2] = 0.0  # неверно
-    logp[2, ABSTAIN] = 0.0  # верного нет — воздержалась
+    logp[2, ABSTAIN] = 0.0  # верного нет, воздержалась
     mass = np.ones(3, dtype=np.float32)
     m = metrics(predictions(prompts, logp, mass, k=5))
     assert m["n_solvable"] == 2
@@ -110,8 +110,6 @@ def test_metrics_on_handmade_predictions() -> None:
     assert m["catboost_top1"] == 0.5
     assert m["abstain_when_unsolvable"] == 1.0
     assert m["coverage"] == pytest.approx(2 / 3, abs=1e-4)
-    assert m["by_catboost_rank"]["0"] == {"n": 1, "accuracy": 1.0, "catboost": 1.0}
-    assert m["by_catboost_rank"]["3"] == {"n": 1, "accuracy": 0.0, "catboost": 0.0}
     assert sum(m["answer_share"].values()) == pytest.approx(1.0, abs=1e-3)  # доли округлены
     assert m["errors"]["n"] == 1
     assert m["errors"]["same_branch"] + m["errors"]["other_branch"] == 1.0

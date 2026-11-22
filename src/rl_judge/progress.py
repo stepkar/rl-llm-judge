@@ -1,5 +1,4 @@
-"""Прошло / осталось для длинных циклов. Строки лога, а не tqdm: их удобно читать
-и в ``tee runs/x.log``. Логика та же, что в ml_classification (`mlc_matching.progress`)."""
+"""Прошло / осталось строкой лога. Не tqdm, чтобы нормально читалось через tee."""
 
 from __future__ import annotations
 
@@ -7,7 +6,7 @@ import time
 
 
 def fmt_duration(seconds: float) -> str:
-    """Секунды → «45 с», «3 мин 05 с», «2 ч 10 мин»."""
+    """45 с, 3 мин 05 с, 2 ч 10 мин."""
     s = int(round(max(seconds, 0)))
     if s < 60:
         return f"{s} с"
@@ -19,7 +18,7 @@ def fmt_duration(seconds: float) -> str:
 
 
 class Eta:
-    """Оценка остатка — линейная экстраполяция по уже сделанной части."""
+    """Остаток оценивается линейно по сделанному."""
 
     def __init__(self, total: int, *, min_interval: float = 10.0) -> None:
         self.total = max(int(total), 1)
@@ -32,7 +31,7 @@ class Eta:
         return time.perf_counter() - self._start
 
     def line(self, done: int) -> str:
-        """«40/250 (16%), прошло 3 мин 10 с, осталось ≈ 16 мин 40 с, конец ≈ 18:42»"""
+        """40/250 (16%), прошло 3 мин 10 с, осталось ≈ 16 мин 40 с, конец ≈ 18:42"""
         text = f"{done}/{self.total} ({done / self.total:.0%}), прошло {fmt_duration(self.elapsed)}"
         if done > 0:
             remaining = self.elapsed * (self.total - done) / done
@@ -41,7 +40,7 @@ class Eta:
         return text
 
     def due(self) -> bool:
-        """True, если пора печатать очередную строку (не чаще min_interval секунд)."""
+        """Пора печатать: с прошлой строки прошло min_interval секунд."""
         now = time.perf_counter()
         if now - self._last_print >= self._min_interval:
             self._last_print = now

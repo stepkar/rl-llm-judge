@@ -1,12 +1,8 @@
-"""Модель-судья на MLX: загрузка, LoRA и вероятности вариантов ответа.
+"""Судья на MLX: загрузка, LoRA, вероятности цифр.
 
-Ответ у нас — одна цифра, поэтому генерировать текст не нужно. Достаточно один
-раз прогнать промпт и посмотреть на логиты следующего токена: среди них есть
-логиты цифр «0»..«k». Распределение по этим k+1 токенам (с перенормировкой) и
-есть политика судьи. Жадный ответ — самая вероятная цифра, то есть обычное
-жадное декодирование, ограниченное допустимыми ответами. Сколько вероятности
-модель вообще отдаёт цифрам (``option_mass``), логируем отдельно: это показатель
-того, насколько она сама держит формат.
+Текст не генерируем. Берём логиты следующего токена, из них цифры 0..k, и
+перенормируем - это и есть политика. Жадный ответ - самая вероятная цифра.
+``option_mass`` - сколько вероятности модель сама отдаёт цифрам.
 """
 
 from __future__ import annotations
@@ -33,9 +29,9 @@ log = logging.getLogger("rl_judge.model")
 
 @dataclass
 class Judge:
-    model: Any  # mlx_lm-модель (nn.Module)
-    tokenizer: Any  # TokenizerWrapper из mlx_lm
-    option_ids: mx.array  # id токенов «0», «1», …, «k» — именно в этом порядке
+    model: Any
+    tokenizer: Any
+    option_ids: mx.array  # id токенов "0".."k" именно в этом порядке
 
 
 def load_judge(cfg: ModelConfig, k: int) -> Judge:
@@ -52,8 +48,7 @@ def load_judge(cfg: ModelConfig, k: int) -> Judge:
 
 
 def add_lora(judge: Judge, cfg: ModelConfig) -> None:
-    """Замораживает базу и вставляет LoRA. B-матрица LoRA стартует с нуля, так что
-    до первого шага модель с LoRA совпадает с исходной (она же референс для KL)."""
+    """B-матрица LoRA стартует с нуля, так что до первого шага модель равна исходной."""
     judge.model.freeze()
     linear_to_lora_layers(judge.model, cfg.lora_layers, _lora_parameters(cfg))
 
@@ -63,7 +58,7 @@ def _lora_parameters(cfg: ModelConfig) -> dict[str, float]:
 
 
 def save_adapters(judge: Judge, cfg: ModelConfig, folder: Path) -> None:
-    """Формат mlx-lm: адаптеры потом грузятся через ``load(name, adapter_path=folder)``."""
+    """В формате mlx-lm, грузится через ``load(name, adapter_path=folder)``."""
     folder.mkdir(parents=True, exist_ok=True)
     weights = dict(tree_flatten(judge.model.trainable_parameters()))
     mx.save_safetensors(str(folder / "adapters.safetensors"), weights)
@@ -83,7 +78,7 @@ def load_with_adapters(cfg: ModelConfig, k: int, adapters: Path) -> Judge:
 
 
 def encode_prompts(judge: Judge, prompts: list[Prompt]) -> list[list[int]]:
-    """Промпт → токены с chat-шаблоном модели. Рассуждения (`<think>`) выключены."""
+    """Токены с chat-шаблоном, рассуждения выключены."""
     encoded = []
     for prompt in prompts:
         text = judge.tokenizer.apply_chat_template(
@@ -97,8 +92,7 @@ def encode_prompts(judge: Judge, prompts: list[Prompt]) -> list[list[int]]:
 
 
 def _pad(batch: list[list[int]], pad_id: int) -> tuple[mx.array, mx.array]:
-    """Паддинг справа. Внимание причинное, поэтому хвостовой паддинг не влияет на
-    последний настоящий токен — а нам нужен только он."""
+    """Паддинг справа. Внимание причинное, на последний настоящий токен он не влияет."""
     width = max(len(t) for t in batch)
     tokens = np.full((len(batch), width), pad_id, dtype=np.int32)
     for i, t in enumerate(batch):
@@ -107,14 +101,14 @@ def _pad(batch: list[list[int]], pad_id: int) -> tuple[mx.array, mx.array]:
 
 
 def option_logprobs(judge: Judge, batch: list[list[int]]) -> tuple[mx.array, mx.array]:
-    """Логарифмы вероятностей вариантов [B, k+1] и доля массы на цифрах [B].
+    """Log-вероятности вариантов [B, k+1] и масса на цифрах [B].
 
-    Тело модели прогоняется по всему промпту, а выходной слой (152 тыс. токенов
-    словаря) — только по последней позиции, иначе логиты батча занимают гигабайты.
+    Выходной слой (словарь 152 тыс.) считаем только на последней позиции,
+    иначе логиты батча занимают гигабайты.
     """
     pad_id = judge.tokenizer.pad_token_id or judge.tokenizer.eos_token_id
     tokens, lengths = _pad(batch, pad_id)
-    # Qwen3.5 мультимодальная: текстовая часть лежит в language_model, у Qwen3 — сразу.
+    # у мультимодальных Qwen3.5 текстовая часть лежит в language_model
     lm = getattr(judge.model, "language_model", judge.model)
     hidden = lm.model(tokens)
     last = hidden[mx.arange(len(batch)), lengths - 1]
@@ -132,7 +126,7 @@ def option_logprobs(judge: Judge, batch: list[list[int]]) -> tuple[mx.array, mx.
 def predict_logprobs(
     judge: Judge, encoded: list[list[int]], batch_size: int, label: str = "инференс"
 ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
-    """``option_logprobs`` по всему списку без градиента; результат в numpy."""
+    """``option_logprobs`` по всему списку батчами, в numpy."""
     logps, masses = [], []
     eta = Eta(len(encoded))
     for lo in range(0, len(encoded), batch_size):

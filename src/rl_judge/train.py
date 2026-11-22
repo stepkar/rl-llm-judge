@@ -1,25 +1,19 @@
-"""Обучение судьи: GRPO с выбранной наградой или SFT-контроль на тех же данных.
+"""Обучение судьи: GRPO с выбранной наградой или SFT на тех же данных.
 
-    uv run python -m rl_judge.train --set experiment=binary_s0
     uv run python -m rl_judge.train --set experiment=abstain_s1 --set reward.name=abstain --set train.seed=1
     uv run python -m rl_judge.train --set experiment=sft_s0 --set train.method=sft
 
-Что происходит по порядку. Порядок батчей задаётся заранее, и исходная модель
-(без LoRA) один раз проходит по тем обучающим промптам, что в него попали: её
-распределения запоминаются как референс для KL. На полных данных это ~2 тыс. из
-10 тыс., остальные модель за 250 шагов всё равно не увидит. Потом исходная модель
-оценивается на dev и на отложенной выборке: это «шаг 0», качество базовой модели.
-Потом вставляется LoRA и идут шаги обучения; каждые ``train.eval_every`` шагов
-модель оценивается на dev, по этим точкам строятся кривые и подбираются lr и
-kl_coef. Отложенную выборку модель видит только дважды, до обучения и после
-последнего шага. Чекпоинт не выбирается, берётся последний.
+Батчи расписаны заранее, и референс для KL считается только по промптам, которые
+в них попадут (~2 тыс. из 10). Дальше исходная модель оценивается на dev и на
+отложенной выборке (шаг 0), вставляется LoRA и идёт обучение с оценкой на dev
+каждые ``train.eval_every`` шагов. В конце снова отложенная выборка, берётся последний шаг.
 
-Результат в runs/<время>_<experiment>/:
-    config.yaml       полный конфиг прогона
-    metrics.jsonl     строка на шаг обучения (kind=train) и на каждую оценку на dev (kind=eval)
+Что остаётся в runs/<время>_<experiment>/:
+    config.yaml       конфиг прогона
+    metrics.jsonl     kind=train на каждый шаг, kind=eval на каждую оценку на dev
     eval_step0.json   базовая модель на отложенной выборке (+ .predictions.jsonl)
     eval_final.json   обученная модель там же (+ .predictions.jsonl)
-    adapters/         LoRA-адаптеры в формате mlx-lm
+    adapters/         LoRA в формате mlx-lm
 """
 
 from __future__ import annotations
@@ -76,8 +70,7 @@ class MetricsLog:
 
 
 def reward_table(prompts: list[Prompt], cfg: Config) -> NDArray[np.float32]:
-    """Награда за каждую цифру каждого промпта заранее: [N, k+1]. Ответ — одна цифра,
-    так что вариантов мало и считать награду на лету незачем."""
+    """Награда за каждую цифру каждого промпта, [N, k+1]."""
     return np.array(
         [
             [reward(p.code_of(a), p.example.gold, cfg.reward) for a in range(p.n_options)]
@@ -90,8 +83,7 @@ def reward_table(prompts: list[Prompt], cfg: Config) -> NDArray[np.float32]:
 def batch_schedule(
     n: int, steps: int, batch_size: int, rng: np.random.Generator
 ) -> list[NDArray[np.int64]]:
-    """Индексы промптов на каждый шаг: перемешивание, на новой эпохе — новое.
-    Расписание известно заранее, поэтому референс считается только по нужным промптам."""
+    """Индексы промптов на каждый шаг, на новой эпохе новое перемешивание."""
     batches = []
     order, cursor = rng.permutation(n), 0
     for _ in range(steps):
@@ -111,9 +103,8 @@ def evaluate_now(
     out: Path | None = None,
     ref: NDArray[np.float32] | None = None,
 ) -> tuple[dict[str, Any], NDArray[np.float32]]:
-    """Метрики и распределения модели. ``ref`` — распределения исходной модели на тех же
-    задачах; с ним в отчёт попадает KL к ней. На батчах KL шумит (8 промптов), а на
-    фиксированной выборке его можно сравнивать между шагами и условиями."""
+    """Метрики и распределения. С ``ref`` (исходная модель на тех же задачах) ещё и KL:
+    на батче из 8 промптов он шумит, а на фиксированной выборке сравним между шагами."""
     logp, mass = predict_logprobs(judge, encoded, cfg.model.batch_size, label=label)
     preds = predictions(prompts, logp, mass, cfg.data.k)
     report = metrics(preds)
@@ -128,7 +119,8 @@ def _eval_line(label: str, step: int, report: dict[str, Any]) -> str:
     return (
         f"{label}, шаг {step}: accuracy {report['accuracy']:.3f} "
         f"(CatBoost {report['catboost_top1']:.3f}), та же ветка {report['same_branch']:.3f}, "
-        f"«не знаю» {report['abstain_rate']:.1%}, точность ответов {report['precision_answered']:.3f}, "
+        f'"не знаю" {report["abstain_rate"]:.1%}, '
+        f"точность ответов {report['precision_answered']:.3f}, "
         f"энтропия {report['entropy']:.2f}, KL {report['kl']:.3f}"
     )
 
@@ -214,9 +206,7 @@ def train(cfg: Config, run_dir: Path) -> None:
         tokens = [enc_train[i] for i in idx]
         ref = mx.array(ref_logp[idx])
 
-        # Текущая политика без градиента: из неё сэмплируется группа, по ней же
-        # считаются метрики шага. Лишний прямой проход стоит ~трети шага, но иначе
-        # ответы пришлось бы выбирать до того, как известны их вероятности.
+        # отдельный проход без градиента: группу надо сэмплировать до шага
         logp_now, _ = option_logprobs(judge, tokens)
         logp_np = np.array(logp_now)
         row: dict[str, Any] = {"kind": "train", "step": step}
@@ -241,7 +231,7 @@ def train(cfg: Config, run_dir: Path) -> None:
             reward_greedy=float(rewards[idx, greedy].mean()),
             accuracy_greedy=float((greedy == gold_actions[idx]).mean()),
             entropy=entropy(logp_np),
-            completion_tokens=1,  # ответ всегда одна цифра — «длина ответа» постоянна
+            completion_tokens=1,  # длина ответа всегда 1, задание просит её логировать
         )
         history.write(row)
 
@@ -250,8 +240,7 @@ def train(cfg: Config, run_dir: Path) -> None:
             history.write({"kind": "eval", "step": step, **dev})
             log.info(_eval_line("dev", step, dev))
         if eta.due() or step == t.steps:
-            # Группа без разброса наград даёт нулевое преимущество, то есть градиент
-            # только от KL. Доля групп с сигналом показывает, учится ли что-то вообще.
+            # группа с одинаковыми наградами даёт градиент только от KL
             signal = f" | групп с сигналом {signal_total / step:.0%}" if t.method == "grpo" else ""
             log.info(
                 "шаг %s | reward %.3f | kl %.4f | энтропия %.2f%s",

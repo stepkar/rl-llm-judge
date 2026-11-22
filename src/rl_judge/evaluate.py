@@ -1,12 +1,7 @@
-"""Оценка судьи жадным ответом на фиксированной выборке.
+"""Оценка жадным ответом. Accuracy считается на решаемых задачах (верный код
+среди k показанных), "не знаю" и точность ответов - на всех.
 
-Главная метрика — accuracy на «решаемых» задачах, где верный код есть среди
-показанных k кандидатов: только на них судья в принципе может угадать. Но
-считаем и всё остальное, иначе не увидеть, что делает награда с воздержанием:
-долю «не знаю», точность среди тех ответов, что модель всё-таки дала, и как
-часто она воздерживается там, где верного кода в списке действительно нет.
-
-Отдельно (без обучения, просто посмотреть базовую модель):
+Можно запустить отдельно от обучения:
 
     uv run python -m rl_judge.evaluate --set model.name=Qwen/Qwen3-0.6B
     uv run python -m rl_judge.evaluate --adapters runs/<прогон>/adapters --split eval
@@ -40,13 +35,13 @@ class Prediction:
     slice: str
     solvable: bool
     gold_action: int
-    action: int  # что ответила модель: 1..k или 0
+    action: int
     correct: bool
-    catboost_correct: bool  # CatBoost поставил верный код первым — с ним и сравниваем судью
-    gold_rank: int | None  # место верного кода у CatBoost (0 = top-1), None — его нет в пуле
-    catboost_rank: int | None  # место выбранного кандидата у CatBoost (0 = его top-1)
-    same_branch: bool  # выбранный код в той же ветке, что верный (включая сам верный)
-    probs: list[float]  # распределение по 0..k
+    catboost_correct: bool  # CatBoost поставил верный код первым
+    gold_rank: int | None  # место верного кода у CatBoost с нуля
+    catboost_rank: int | None  # место выбранного кандидата у CatBoost с нуля
+    same_branch: bool  # в ветке верного кода, сам верный тоже считается
+    probs: list[float]
     option_mass: float
 
 
@@ -83,7 +78,7 @@ def _share(flags: list[bool]) -> float:
 
 
 def _breakdown(preds: list[Prediction], key: Callable[[Prediction], Any]) -> dict[str, Any]:
-    """Accuracy судьи и CatBoost по группам решаемых задач."""
+    """Accuracy судьи и CatBoost по группам задач."""
     groups: dict[Any, list[Prediction]] = defaultdict(list)
     for p in preds:
         groups[key(p)].append(p)
@@ -107,7 +102,7 @@ def metrics(preds: list[Prediction]) -> dict[str, Any]:
     return {
         "n": len(preds),
         "n_solvable": len(solvable),
-        "accuracy": _share([p.correct for p in solvable]),  # главная метрика
+        "accuracy": _share([p.correct for p in solvable]),
         "catboost_top1": _share([p.catboost_correct for p in solvable]),
         "same_branch": _share([p.same_branch for p in solvable]),
         "abstain_rate": _share([p.action == ABSTAIN for p in preds]),
@@ -118,14 +113,9 @@ def metrics(preds: list[Prediction]) -> dict[str, Any]:
         "entropy": round(float(np.mean(entropy)), 4) if entropy else 0.0,
         "option_mass": round(float(np.mean([p.option_mass for p in preds])), 4) if preds else 0.0,
         "slices": _breakdown(solvable, lambda p: p.slice),
-        # Кандидаты перемешаны, так что верный ответ равномерно стоит на местах 1..k.
-        # Если accuracy сильно зависит от места, модель выбирает по позиции, а не по тексту.
+        # верный ответ стоит на местах 1..k равномерно, так что перекос тут - выбор по позиции
         "by_gold_position": _breakdown(solvable, lambda p: p.gold_action),
         "answer_share": {str(a): _share([p.action == a for p in preds]) for a in range(n_options)},
-        # Где судья полезен: CatBoost поставил верный код на 1-е место или ниже.
-        "by_catboost_rank": _breakdown(solvable, lambda p: p.gold_rank),
-        # Из чего состоят ошибки на решаемых задачах. Рост «соседа по ветке» при
-        # иерархической награде — та лазейка, которую мы ищем.
         "errors": {
             "n": len(wrong),
             "same_branch": _share([p.same_branch and p.action != ABSTAIN for p in wrong]),
@@ -142,7 +132,7 @@ def save_predictions(preds: list[Prediction], path: Path) -> None:
 
 
 def run(cfg: Config, adapters: Path | None, split: str, out: Path | None) -> dict[str, Any]:
-    # MLX грузим только здесь: метрики выше считаются и без GPU (тесты, отчёт).
+    # MLX импортируется здесь, чтобы тесты и report работали без него
     from rl_judge.model import encode_prompts, load_judge, load_with_adapters, predict_logprobs
 
     d = cfg.data
